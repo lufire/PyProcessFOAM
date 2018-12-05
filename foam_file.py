@@ -8,25 +8,38 @@ import file_io_functions as fio
 
 class FoamDimensions(str):
 
+    """
+    Class subclassing python string class to extract OpenFOAM dimension set
+    from basic string.
+    If OpenFOAM dimensions were found in input_str, the constructor returns
+    string with the stripped dimensions in square brackets.
+    Example: '[0 2 -1 0 0 0 0]'
+    If dimension pattern was not found, the constructor returns an empty string
+    """
+
     FOAM_DIM_PATTERN = '\s*\[\s*([-+]?\d\s*)*\]\s*'
     RE_DIM = re.compile(FOAM_DIM_PATTERN)
 
     def __new__(cls, input_str):
-        dim_match = self.RE_DIM.match(input_str)
+        dim_match = cls.RE_DIM.match(input_str)
         if dim_match is True:
             dim_str = dim_match.group[0].lstrip().rstrip()
         else:
-            dim_str = None
-            #raise ValueError('No dimensions were found in provided string')
+            dim_str = ''
         return super().__new__(cls, dim_str)
 
 
 class FoamEntry(dict):
 
-    '''
-    Class storing a single OpenFOAM dictionary entry
-    as a python dictionary
-    '''
+    """
+    Class subclassing from python dictionary storing a single OpenFOAM (OF)
+    dictionary entry with the following keys, value pairs:
+    - name: string object containing the OF variable name
+    - dimensions: FoamDimensions object containing either OF dimensions set
+                  string or an empty string if value is not dimensioned
+    - value: string object containing either a numerical value
+             or another OF-specific type
+    """
 
     END_STMNT = ';'
 
@@ -40,18 +53,33 @@ class FoamEntry(dict):
                                 'either a string containing name and value '
                                 'separated by spaces or a list containing name '
                                 'and value')
-        args = args.lstrip().rstrip()
-        self['variable'] = args.split()[0]
+        args = args.strip()
+        self['name'] = args.split(' ')[0]
         self['dimensions'] = FoamDimensions(args)
-        self['value'] = args.split()[-1].rsplit(self.END_STMNT, 1)[0]
+        value = args.split(self.END_STMNT, 1)[0].strip()
+        value = value.split(' ')[-1]
+        self['value'] = value
+
+    def write(self, tab_length):
+        entry_line = self['name'] + '\t\t\t'
+        if self['dimensions'] is True:
+            entry_line += self['name'] + ' ' + self['dimensions']
+
+        entry_line += self['value'] + self.END_STMNT + '\n'
+        entry_line.expandtabs(tab_length)
+        return entry_line
+
 
 
 class FoamDict(dict):
 
-    '''
+    """
     Class storing an OpenFOAM dictionary
     as a python dictionary
-    '''
+    """
+
+    DICT_OPEN = '{'
+    DICT_CLOSE = '}'
 
     def __init__(self, *args):
         super().__init__(self)
@@ -59,14 +87,13 @@ class FoamDict(dict):
         if found_dict is False:
             raise ValueError('No dictionary found in provided data')
         self['name'] = name
-        self['entries'] = {}
+        self['content'] = {}
         for line in content:
             entry = FoamEntry(line)
-            self['entries'][entry['name']] = entry
+            self['content'][entry['name']] = entry
 
-
-    @staticmethod
-    def read(input_file):
+    @classmethod
+    def read(cls, input_file):
 
         """
         Extract the first and highest dictionary in hierarchy
@@ -88,14 +115,14 @@ class FoamDict(dict):
         end_id = -1
         name = ''
         for i, line in enumerate(input_list):
-            if open_braces == 0 and '{' in line:
+            if open_braces == 0 and cls.DICT_OPEN in line:
                 found_dict = True
                 name = input_list[i - 1].strip()
                 open_braces += 1
-            elif open_braces > 0 and '{' in line:
+            elif open_braces > 0 and cls.DICT_OPEN in line:
                 open_braces += 1
                 content.append(line)
-            elif open_braces > 1 and '}' in line:
+            elif open_braces > 1 and cls.DICT_OPEN in line:
                 open_braces -= 1
                 content.append(line)
             elif open_braces > 0:
@@ -104,26 +131,38 @@ class FoamDict(dict):
                 end_id = i
                 break
         rem_list = input_list[end_id + 1:]
-
         return name, content, found_dict, rem_list
 
+    def write(self, indent_space, tab_length):
+        if not isinstance(indent_space, str):
+            raise TypeError('indent_space must be a string of whitespaces')
+        dict_lines = indent_space + self['name'] + '\n'
+        dict_lines += indent_space + self.DICT_OPEN + '\n'
+        for key in self['content']:
+            dict_lines += indent_space + self['content'][key].write(tab_length)
+        dict_lines += indent_space + self.DICT_CLOSE + '\n'
+        return dict_lines
 
 
-class FoamFile(object):
+class FoamFile:
+
+    """
+    Class representing an OpenFOAM (OF) input file organized into
+    header (list of strings), single entries (FoamEntry),
+    and dictionaries (FoamDictionaries)
+    """
 
     HEADER_SIZE = 15
     TAB_LENGTH = 4
-    END_STMNT = ';'
 
     def __init__(self, input_file):
-        input_list = fio.read_foam_header(input_file)
+        input_list = fio.read_header(input_file)
         self.header = input_list[:self.HEADER_SIZE]
         self.body = input_list[self.HEADER_SIZE:]
         self.pure_body = [line for line in self.body if not re.search('^\s*//')]
 
-
-
-    def read_header(self, input_file):
+    @staticmethod
+    def read_header(input_file):
 
         """
         Extract the OpenFOAM header from input file
