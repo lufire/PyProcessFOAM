@@ -5,14 +5,15 @@ import re
 import globals as gl
 import file_io_functions as fio
 
+FLOAT_NUMBER_PATTERN = '[-+]?(?:(?:\d*\.\d+)|(?:\d+\.?))(?:[Ee][+-]?\d+)?'
+
 
 class FoamDimensions(str):
 
     """
-    Class subclassing python string class to extract OpenFOAM dimension set
-    from basic string.
-    If OpenFOAM dimensions were found in input_str, the constructor returns
-    string with the stripped dimensions in square brackets.
+    Subclass of python string to extract OpenFOAM dimension set from basic
+    string. If OpenFOAM dimensions were found in input_str, the constructor
+    returns string with the stripped dimensions in square brackets.
     Example: '[0 2 -1 0 0 0 0]'
     If dimension pattern was not found, the constructor returns an empty string
     """
@@ -22,11 +23,135 @@ class FoamDimensions(str):
 
     def __new__(cls, input_str):
         dim_match = cls.RE_DIM.match(input_str)
-        if dim_match is True:
+        if dim_match:
             dim_str = dim_match.group[0].lstrip().rstrip()
         else:
             dim_str = ''
         return super().__new__(cls, dim_str)
+
+
+class FoamList:
+
+    """
+    Subclass of python string to extract OpenFOAM list from basic string
+    or list. If OpenFOAM vector was found in input_str, the constructor returns
+    string with the stripped list in round brackets.
+    Example: '(0 0 0)'
+    If list pattern was not found, the constructor returns an empty string
+    """
+
+    OPEN = '('
+    CLOSE = ')'
+
+    def __init__(cls, input_str, delim = ' '):
+        self.name = ''
+        self.content = []
+        self.delim = delim
+
+
+    @classmethod
+    def read(cls, input_file):
+
+        """
+        Extract the first and highest dictionary in hierarchy
+        in OpenFOAM (OF) format from provided list
+
+        Inputs:
+            - input_file: OF-input file path or list of file lines
+        Returns:
+            - name: name of OF-dict
+            - content: list of lines of the OF-dict
+            - found_dict: bool to indicate whether a dictionary was found
+            - rem_list: remaining list following the first dictionary
+        """
+
+        input_list = convert_input_to_list(input_file)
+        open_braces = 0
+        found_dict = False
+        content = []
+        end_id = -1
+        name = ''
+        for i, line in enumerate(input_list):
+            if open_braces == 0 and cls.OPEN in line:
+                found_dict = True
+                name = input_list[i - 1].strip()
+                open_braces += 1
+            elif open_braces > 0 and cls.OPEN in line:
+                open_braces += 1
+                content.append(line)
+            elif open_braces > 1 and cls.CLOSE in line:
+                open_braces -= 1
+                content.append(line)
+            elif open_braces > 0:
+                content.append(line)
+            else:
+                end_id = i
+                break
+        rem_list = input_list[end_id + 1:]
+        return name, content, found_dict, rem_list
+
+
+class FoamVector(str):
+
+    """
+    Subclass of python string to extract OpenFOAM vector from basic string. If
+    OpenFOAM vector was found in input_str, the constructor returns string with
+    the stripped vector in round brackets.
+    Example: '( 0 0 0 )'
+    If vector pattern was not found, the constructor returns an empty string
+    """
+
+    FOAM_VECTOR_PATTERN = '\(\s*' + FLOAT_NUMBER_PATTERN \
+                          + '\s*' + FLOAT_NUMBER_PATTERN \
+                          + '\s*' + FLOAT_NUMBER_PATTERN + '\s*\)'
+    RE_VECTOR = re.compile(FOAM_VECTOR_PATTERN)
+
+    def __new__(cls, input_str):
+        vector_match = cls.RE_DIM.match(input_str)
+        if vector_match:
+            vector_str = vector_match.group[0].lstrip().rstrip()
+        else:
+            vector_str = ''
+        return super().__new__(cls, vector_str)
+
+
+class FoamUniformVector(FoamVector):
+
+    """
+    Subclass of FoamVector to extract OpenFOAM uniform vector
+    from basic string. If OpenFOAM uniform vector was found in input_str, the
+    constructor returns string with the stripped uniform vector.
+    Example: 'uniform ( 0 0 0 )'
+    If uniform vector pattern was not found, the constructor returns FoamVector
+    object
+    """
+
+    def __new__(cls, input_str):
+        vector_str = super().__new__(cls, input_str)
+        if 'uniform' in input_str and vector_str:
+            return 'uniform ' + vector_str
+        return vector_str
+
+
+class FoamUniformScalar(FoamVector):
+
+    """
+    Subclass of FoamVector to extract OpenFOAM uniform vector
+    from basic string. If OpenFOAM uniform vector was found in input_str, the
+    constructor returns string with the stripped uniform vector.
+    Example: 'uniform 0.0'
+    If uniform vector pattern was not found, the constructor returns FoamVector
+    object
+    """
+
+    def __new__(cls, input_str):
+        vector_str = super().__new__(cls, input_str)
+        if 'uniform' in input_str and vector_str:
+            return 'uniform ' + vector_str
+        return vector_str
+
+
+
 
 
 class FoamEntry(dict):
@@ -50,9 +175,7 @@ class FoamEntry(dict):
                 args = ' '.join(args)
             else:
                 raise TypeError('Class FoamEntry must be initialized with '
-                                'either a string containing name and value '
-                                'separated by spaces or a list containing name '
-                                'and value')
+                                'either a string, list or tuple')
         args = args.strip()
         self['name'] = args.split(' ')[0]
         self['dimensions'] = FoamDimensions(args)
@@ -62,12 +185,17 @@ class FoamEntry(dict):
 
     def write(self, tab_length):
         entry_line = self['name'] + '\t\t\t'
-        if self['dimensions'] is True:
+        if self['dimensions']:
             entry_line += self['name'] + ' ' + self['dimensions']
-
         entry_line += self['value'] + self.END_STMNT + '\n'
         entry_line.expandtabs(tab_length)
         return entry_line
+
+    @staticmethod
+    def factory(input_str):
+        input_str = FoamUniformVector(input_str)
+        if input_str:
+            return input_str
 
 
 
@@ -84,7 +212,7 @@ class FoamDict(dict):
     def __init__(self, *args):
         super().__init__(self)
         name, content, found_dict, rem_input = self.read(args)
-        if found_dict is False:
+        if not found_dict:
             raise ValueError('No dictionary found in provided data')
         self['name'] = name
         self['content'] = {}
