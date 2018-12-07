@@ -42,8 +42,6 @@ class FoamList:
 
     OPEN = '('
     CLOSE = ')'
-    RE_OPEN = re.compile(OPEN)
-    RE_CLOSE = re.compile(CLOSE)
 
     def __init__(self, input_data, delim = ' '):
         self.name = ''
@@ -55,22 +53,35 @@ class FoamList:
     def read(cls, input_data, delim = ' '):
 
         """
-        Extract the first and highest dictionary in hierarchy
-        in OpenFOAM (OF) format from provided list
+        Read the last and most inner nested list
+        in OpenFOAM (OF) format from provided data
 
         Inputs:
-            - input_file: OF-input file path or list of file lines
+            - input_data: OF-input data string, list or tuple
+            - delim: delimiter symbol separating list items (default: ' ')
         Returns:
-            - name: name of OF-dict
-            - content: list of lines of the OF-dict
-            - found_dict: bool to indicate whether a dictionary was found
-            - rem_list: remaining list following the first dictionary
+            - name: name of OF-list
+            - data: python list of list entries
+            - rem_data: remaining data not containing extracted list
         """
 
-        data_str = fio.convert_input_to_str(input_data, delim)
-        re_match = re.match(cls.RE_OPEN, data_str)
-        while re_match:
-            data_str
+        data = fio.convert_input_to_str(input_data, delim)
+        name = ''
+        data = ''
+        rem_data = ''
+        lists = {}
+        while cls.OPEN in data:
+            data = data.split(cls.OPEN, 1)
+            rem_data += data[0] + cls.OPEN
+            lists.append(data[1])
+        name = rem_data.split()[-1]
+        if cls.CLOSE in data:
+            data = data.split(cls.CLOSE, 1)[0].split(delim)
+
+        return name, data, rem_data
+
+
+
 
 
         open_braces = 0

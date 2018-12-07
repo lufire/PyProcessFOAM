@@ -39,24 +39,27 @@ def replace(file_path, pattern, subst):
 
 def convert_input_to_list(input_file):
     if isinstance(input_file, str):
-        with open(input_file, 'r') as f:
-            input_list = f.readlines()
+        try:
+            with open(input_file, 'r') as f:
+                input_list = f.readlines()
+        except FileNotFoundError:
+            print('File was not found')
     elif isinstance(input_file, (list, tuple)):
             input_list = input_file
     else:
         raise TypeError('Provide the input file either as path pointing '
-                        'to file or as tuple or list with its content')
+                        'to file or as tuple or list')
     return input_list
 
 
-def convert_input_to_str(input_file, delim=' '):
-    if isinstance(input_file, str):
-        input_str = input_file
-    elif isinstance(input_file, (list, tuple)):
-            input_str = delim.join(input_file)
+def convert_input_to_str(input_data, delim=' '):
+    if isinstance(input_data, str):
+        input_str = input_data
+    elif isinstance(input_data, (list, tuple)):
+            input_str = delim.join(input_data)
     else:
-        raise TypeError('Provide the input file either as path pointing '
-                        'to file or as tuple or list with its content')
+        raise TypeError('Provide the input data either as single string '
+                        'or as list or tuple')
     return input_str
 
 
