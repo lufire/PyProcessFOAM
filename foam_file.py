@@ -42,15 +42,17 @@ class FoamList:
 
     OPEN = '('
     CLOSE = ')'
+    RE_OPEN = re.compile(OPEN)
+    RE_CLOSE = re.compile(CLOSE)
 
-    def __init__(cls, input_str, delim = ' '):
+    def __init__(self, input_data, delim = ' '):
         self.name = ''
         self.content = []
         self.delim = delim
 
 
     @classmethod
-    def read(cls, input_file):
+    def read(cls, input_data, delim = ' '):
 
         """
         Extract the first and highest dictionary in hierarchy
@@ -65,7 +67,12 @@ class FoamList:
             - rem_list: remaining list following the first dictionary
         """
 
-        input_list = convert_input_to_list(input_file)
+        data_str = fio.convert_input_to_str(input_data, delim)
+        re_match = re.match(cls.RE_OPEN, data_str)
+        while re_match:
+            data_str
+
+
         open_braces = 0
         found_dict = False
         content = []

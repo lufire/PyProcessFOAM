@@ -49,6 +49,17 @@ def convert_input_to_list(input_file):
     return input_list
 
 
+def convert_input_to_str(input_file, delim=' '):
+    if isinstance(input_file, str):
+        input_str = input_file
+    elif isinstance(input_file, (list, tuple)):
+            input_str = delim.join(input_file)
+    else:
+        raise TypeError('Provide the input file either as path pointing '
+                        'to file or as tuple or list with its content')
+    return input_str
+
+
 def read_foam_header(input_file):
 
     """
